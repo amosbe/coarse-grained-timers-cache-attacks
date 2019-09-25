@@ -44,17 +44,17 @@
 #define POOLSIZE 7000//20000
 #define L3_TRIES L3WAYS+1
 #define L3_SAMPLES 1
-#define L2_SAMPLES 3
+#define L2_SAMPLES 1
 
 #define L3_THRESH 40
 #define L3_COLLECT_LOWTHRESH 40
 #define L3_COLLECT_HIGHTHRESH 45
-#define L3_STEPS 2000000
+#define L3_STEPS 2e6
 
 #define L2_THRESH 48
 #define L2_STEPS 4e6
-#define L2_THRESH_COLLECT 16
-#define L2_STEPS_COLLECT 1e6
+#define L2_THRESH_COLLECT 10
+#define L2_STEPS_COLLECT 5e5
 
 #ifdef THREADS
 #define L3_THRESH_THREAD 340e3//todo
@@ -72,10 +72,10 @@
 #define L3_THRESH 40
 #define L3_COLLECT_LOWTHRESH 40
 #define L3_COLLECT_HIGHTHRESH 45
-#define L3_STEPS 2000000
+#define L3_STEPS 2e6
 #define L2_THRESH 35
-#define L2_THRESH_COLLECT 60
-#define L2_STEPS_COLLECT 5000000
+#define L2_THRESH_COLLECT 10
+#define L2_STEPS_COLLECT 1e6
 #endif
 
 #define CLKSRC_MS 0
@@ -1165,7 +1165,7 @@ static inline void sendbit(uint32_t value,int setidx,int offset,int lines,uint64
 		}
 	else
 		while(now-start < dur) {
-			for (int i = 0; i < lines; i++) tmp = 0; //todo
+			for (int i = 0; i < lines; i++) tmp = 0;
 			now = clocksamplems();
 		}
 }
@@ -1221,7 +1221,7 @@ void mapl2tol3(vlist_t candidatesl2,int n, int cheatmode)
 	uint64_t thresh = l3_thresh_global; //empirical
 	uint64_t super_thresh = thresh;
 	int chainSteps = l3_steps_global; //empirical
-	int nlines = NSETSL3_LOC*L3WAYS*3; //16*12*2 = 384
+	int nlines = NSETSL3_LOC*L3WAYS*2; //16*12*2 = 384
 	uint64_t ct;
 	int nsetsl3_local = 0;
 	printf("\nmapl2tol3(%d)\n",vl_len(candidatesl2));
@@ -1260,7 +1260,7 @@ void mapl2tol3(vlist_t candidatesl2,int n, int cheatmode)
 		printHistL3RS(lines);
 		int tries = 0;
 		bool dumpLine;
-		bool fast = false;
+		bool fast = true;
 		element_t x;
 		while(vl_len(lines) > L3WAYS+1) {
 			int fastcount = 0;
@@ -1282,7 +1282,7 @@ void mapl2tol3(vlist_t candidatesl2,int n, int cheatmode)
 			}
 			x = vl_pop(lines);
 			//printvlist(lines);
-			ct = slowProbe(lines,chainSteps,0,0);
+			ct = slowProbe(lines,chainSteps/10,0,0);
 			dumpLine = true;
 			for(int i = 0; i < L3_SAMPLES && dumpLine; i++) {
 				ct = slowProbe(lines,chainSteps,0,0);
@@ -1357,9 +1357,9 @@ void EMSCRIPTEN_KEEPALIVE mapl2tol3i(int setl2idx,int n)
 		printf("No such L2 set\n");
 		return;
 	}
-	uint64_t start_time = clocksample();
+	uint64_t start_time = clocksamplems();
 	mapl2tol3(setsl2[setl2idx],n,0);
-	uint64_t end_time = clocksample();
+	uint64_t end_time = clocksamplems();
 	printf("Total time = %" STR(U64STR) "\n",end_time - start_time);
 
 }
@@ -1367,19 +1367,12 @@ void EMSCRIPTEN_KEEPALIVE mapl2tol3i(int setl2idx,int n)
 void EMSCRIPTEN_KEEPALIVE mapl3()
 {
 	if(nsetsl2 == 0) return;
-	uint64_t start_time = clocksampleEdge();
-	mapl2tol3(setsl2[0],0,0);
-	uint64_t end_time = clocksampleEdge();
-	printf("Total time = %" STR(U64STR) "\n",end_time - start_time);
-	for(int i = 0; i < nsets; i++) {
-		printf("l3set %d: %d lines\n",i,vl_len(sets[i]));
-		printHistL3RS(sets[i]);
-	}
-	return;
-	//todo
+	uint64_t start_time = clocksamplems();
 	for (int i = 0; i < nsetsl2; i++) {
 		mapl2tol3(setsl2[i],0,0);
 	}
+	uint64_t end_time = clocksamplems();
+	printf("Total time = %" STR(U64STR) "\n",end_time - start_time);
 }
 
 void EMSCRIPTEN_KEEPALIVE mapl2()
@@ -1396,7 +1389,7 @@ void EMSCRIPTEN_KEEPALIVE mapl2()
 	free_setsl2();
 	printf("vl_len(pool) = %d\n",vl_len(pool));
 	printHistL2(pool);
-	for (int i = 0; i < nlines; i++) vl_push(candidates,vl_pop(pool));
+	for (int i = 0; i < nlines; i++) vl_push(candidates,vl_poprand(pool));
 	while(vl_len(candidates) && nsetsl2 < NSETSL2) {
 		printf("vl_len(candidates) = %d, nsetsl2 = %d\n",vl_len(candidates),nsetsl2);
 		printHistL2(candidates);
@@ -1414,7 +1407,7 @@ void EMSCRIPTEN_KEEPALIVE mapl2()
 		bool fast = true;
 		int tries = 0;
 		element_t x;
-		slowProbe(lines,chainSteps,0,0);
+		slowProbe(lines,chainSteps,0,0); //dummy
 		while(vl_len(lines) > L2WAYS+1) {
 			int fastcount = 0;
 			while(fast) {
@@ -1460,7 +1453,9 @@ void EMSCRIPTEN_KEEPALIVE mapl2()
 		if (ct <= thresh) {
 			printf("ROLLBACK: start again...\n");
 			vl_pushall(candidates,lines);
+			vl_pushall(candidates,rest);
 			vl_free(lines);
+			vl_free(rest);
 			continue;
 		}
 		printHistL2(lines);
@@ -1472,11 +1467,10 @@ void EMSCRIPTEN_KEEPALIVE mapl2()
 		vl_pushall(setsl2[nsetsl2],lines);
 		nsetsl2++;
 		vl_free(lines);
-		printf("vl_len(candidates) = %d\n",vl_len(candidates));
+//		printf("vl_len(candidates) = %d\n",vl_len(candidates));
 		printf("\n");
-		//break; //todo
 	}
-
+	
 	end = clocksamplems();
 	printf("Total mapl2() = %" STR(U64STR) " [ms]\n",end-start);
 	for(int i = 0; i < nsetsl2; i++) {
@@ -1926,5 +1920,4 @@ int main(int argc,  const char ** argv)
 	printf("Ready\n");
 #endif
 	//...
-
 }
