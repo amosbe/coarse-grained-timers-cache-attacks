@@ -10,10 +10,10 @@ function transferUintToHeap(arr) {
      return res;
  }
 }
-//uint32_t EMSCRIPTEN_KEEPALIVE chainTimeList(uint32_t * lines, int n, int steps){
-function chainTimeList(lines,steps) {
+//uint32_t EMSCRIPTEN_KEEPALIVE slowProbeList(uint32_t * lines, int n, int steps){
+function slowProbeList(lines,steps) {
  let linesHeap = transferUintToHeap(lines);
- let res = _chainTimeList(linesHeap,lines.length,steps);
+ let res = _slowProbeList(linesHeap,lines.length,steps);
  Module._free(linesHeap);		
  return res;
 }
